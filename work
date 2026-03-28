@@ -67,3 +67,9 @@ This is where the actual "intelligence" happens.
 * **MongoDB:** Storing user history.
 
 **Would you like me to provide the specific "JSON Schema" prompt so Gemini always returns the data in a format your React code can read perfectly?**
+
+To ensure efficient storage management and maintain system performance, I have implemented application-level constraints on chat and file usage. Each user is limited to a maximum of 5 chats, and within each chat, a maximum of 5 file uploads is allowed. When a user attempts to create a new chat beyond this limit, the system automatically deletes the oldest chat using a FIFO (First-In-First-Out) strategy. This deletion process is comprehensive, meaning it not only removes the chat document but also all associated messages and any uploaded files linked to those messages from cloud storage. Since MongoDB does not support automatic cascading deletion or external file cleanup, this logic is handled explicitly in the backend to ensure consistency between the database and storage. This approach helps optimize limited storage resources, prevents uncontrolled data growth, and keeps the system scalable and maintainable.
+code the backend User
+└── Chat
+└── Messages
+└── Files (via URL) rember you have to delete the files from the backend at all cost from cloudinary
