@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useModal } from "../popUps/useModal";
 import apiClient from "../../services/apiClient";
 
@@ -10,7 +10,6 @@ export const useSignUp = () => {
 		const cached = sessionStorage.getItem(AUTH_STORAGE_KEY);
 		return cached ? JSON.parse(cached) : null;
 	});
-	const tokenRef = useRef(null);
 
 	const { modal, showSuccess, showError, closeModal } = useModal();
 
@@ -30,7 +29,6 @@ export const useSignUp = () => {
 					passwordConfirm,
 				});
 
-				tokenRef.current = data?.token || null;
 				setAuthUser(data?.user || null);
 				sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data?.user || null));
 				window.dispatchEvent(new Event("auth-changed"));
@@ -61,7 +59,6 @@ export const useSignUp = () => {
 		authUser,
 		loading,
 		signUp,
-		tokenRef,
 		modal,
 		closeModal,
 	};

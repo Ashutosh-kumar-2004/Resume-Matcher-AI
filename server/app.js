@@ -13,11 +13,33 @@ connectDB();
 // Initialize Express app
 const app = express();
 
+// Render/Proxy aware secure-cookie handling in production
+app.set('trust proxy', 1);
+
+const fallbackClientOrigins = ['http://localhost:5173'];
+const allowedOrigins = (process.env.CLIENT_URL || fallbackClientOrigins.join(','))
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow non-browser clients and same-origin requests with no origin header.
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('CORS origin not allowed'));
+  },
   credentials: true,
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 
 // Health check route

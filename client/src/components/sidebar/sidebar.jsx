@@ -28,6 +28,7 @@ const Sidebar = () => {
   const [editingChatTitle, setEditingChatTitle] = useState("");
   const [isUpdatingChat, setIsUpdatingChat] = useState(false);
   const sidebarRef = useRef(null);
+  const sidebarToggleRef = useRef(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const storedTheme = sessionStorage.getItem("ui_theme");
 
@@ -68,6 +69,10 @@ const Sidebar = () => {
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (!sidebarRef.current) {
+        return;
+      }
+
+      if (sidebarToggleRef.current?.contains(event.target)) {
         return;
       }
 
@@ -225,6 +230,7 @@ const Sidebar = () => {
     <>
       {/* Hamburger Button - Visible on Mobile */}
       <button
+        ref={sidebarToggleRef}
         onClick={toggleSidebar}
         className="lg:hidden fixed top-4 right-4 z-50 p-2 rounded-lg 
                    bg-linear-to-br from-purple-500 to-blue-500 

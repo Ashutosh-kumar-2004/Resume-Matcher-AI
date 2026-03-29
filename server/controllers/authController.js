@@ -8,6 +8,18 @@ const generateToken = (id) => {
   });
 };
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+const getCookieOptions = () => ({
+  expires: new Date(
+    Date.now() + Number(process.env.JWT_COOKIE_EXPIRE || 7) * 24 * 60 * 60 * 1000
+  ),
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? 'none' : 'lax',
+  path: '/',
+});
+
 // @desc    Register user / Sign Up
 // @route   POST /api/auth/signup
 // @access  Public
@@ -50,24 +62,13 @@ export const signup = async (req, res) => {
     // Generate token
     const token = generateToken(user._id);
 
-    // Create cookie options
-    const cookieOptions = {
-      expires: new Date(
-        Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
-      ),
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-    };
-
     // Set cookie
-    res.cookie('jwt', token, cookieOptions);
+    res.cookie('jwt', token, getCookieOptions());
 
     // Send response
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      token,
       user: {
         id: user._id,
         name: user.name,
@@ -120,24 +121,13 @@ export const login = async (req, res) => {
     // Generate token
     const token = generateToken(user._id);
 
-    // Create cookie options
-    const cookieOptions = {
-      expires: new Date(
-        Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
-      ),
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-    };
-
     // Set cookie
-    res.cookie('jwt', token, cookieOptions);
+    res.cookie('jwt', token, getCookieOptions());
 
     // Send response
     res.status(200).json({
       success: true,
       message: 'Login successful',
-      token,
       user: {
         id: user._id,
         name: user.name,
@@ -156,13 +146,46 @@ export const login = async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 export const logout = async (req, res) => {
-  res.cookie('jwt', null, {
-    expires: new Date(Date.now()),
+  res.clearCookie('jwt', {
     httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
   });
 
   res.status(200).json({
     success: true,
     message: 'Logged out successfully',
   });
+};
+
+// @desc    Get current authenticated user from JWT cookie
+// @route   GET /api/auth/me
+// @access  Private
+export const getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('name email createdAt');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import LoginPage from "../components/auth/LoginPage";
@@ -7,14 +8,16 @@ import ProfilePage from "../components/profile/ProfilePage";
 import SettingsPage from "../components/settings/SettingsPage";
 import NotFoundPage from "../components/notFound/NotFoundPage";
 import HomePage from "../components/home/HomePage";
+import apiClient from "../services/apiClient";
 
-const isAuthenticated = () => {
-  const user = sessionStorage.getItem("auth_user");
-  return Boolean(user);
-};
+const AUTH_STORAGE_KEY = "auth_user_resume_matcher_ai";
 
-const ProtectedRoute = ({ children }) => {
-  if (!isAuthenticated()) {
+const ProtectedRoute = ({ children, authChecked, isAuthenticated }) => {
+  if (!authChecked) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
@@ -22,13 +25,59 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const AppRoutes = () => {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifySession = async () => {
+      try {
+        const response = await apiClient.get("/auth/me");
+        const user = response?.data?.user || null;
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (user) {
+          sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+          setIsAuthenticated(true);
+          window.dispatchEvent(new Event("auth-changed"));
+        } else {
+          sessionStorage.removeItem(AUTH_STORAGE_KEY);
+          setIsAuthenticated(false);
+        }
+      } catch {
+        if (isMounted) {
+          sessionStorage.removeItem(AUTH_STORAGE_KEY);
+          setIsAuthenticated(false);
+        }
+      } finally {
+        if (isMounted) {
+          setAuthChecked(true);
+        }
+      }
+    };
+
+    verifySession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (!authChecked) {
+    return null;
+  }
+
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute authChecked={authChecked} isAuthenticated={isAuthenticated}>
             <MainLayout>
               <Dashboard />
             </MainLayout>
@@ -38,7 +87,7 @@ const AppRoutes = () => {
       <Route
         path="/new-chat"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute authChecked={authChecked} isAuthenticated={isAuthenticated}>
             <MainLayout>
               <Dashboard />
             </MainLayout>
@@ -48,7 +97,7 @@ const AppRoutes = () => {
       <Route
         path="/c/:chatId"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute authChecked={authChecked} isAuthenticated={isAuthenticated}>
             <MainLayout>
               <Dashboard />
             </MainLayout>
@@ -58,7 +107,7 @@ const AppRoutes = () => {
       <Route
         path="/profile"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute authChecked={authChecked} isAuthenticated={isAuthenticated}>
             <MainLayout>
               <ProfilePage />
             </MainLayout>
@@ -68,7 +117,7 @@ const AppRoutes = () => {
       <Route
         path="/settings"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute authChecked={authChecked} isAuthenticated={isAuthenticated}>
             <MainLayout>
               <SettingsPage />
             </MainLayout>
