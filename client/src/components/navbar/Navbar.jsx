@@ -82,13 +82,13 @@ const Navbar = () => {
   };
 
   return (
-    <header className="w-full border-b border-white/20 bg-linear-to-br from-purple-500 to-blue-500 backdrop-blur">
+    <header className="w-full border-b border-white/20 bg-linear-to-br from-purple-500 to-indigo-500 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link
           to={authUser ? "/dashboard" : "/login"}
-          className="font-bold tracking-tight text-white"
+          className="font-bold tracking-tight text-white text-xl"
         >
-          Resume Checker
+          ResumeMatcher AI
         </Link>
 
         <nav className="flex items-center gap-2 sm:gap-3">

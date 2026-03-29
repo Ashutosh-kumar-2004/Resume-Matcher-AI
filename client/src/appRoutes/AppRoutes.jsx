@@ -3,6 +3,10 @@ import MainLayout from "../layouts/MainLayout";
 import LoginPage from "../components/auth/LoginPage";
 import SignUpPage from "../components/auth/SignUpPage";
 import Dashboard from "../components/dashboard/Dashboard";
+import ProfilePage from "../components/profile/ProfilePage";
+import SettingsPage from "../components/settings/SettingsPage";
+import NotFoundPage from "../components/notFound/NotFoundPage";
+import HomePage from "../components/home/HomePage";
 
 const isAuthenticated = () => {
   const user = sessionStorage.getItem("auth_user");
@@ -17,43 +21,10 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-const PublicRoute = ({ children }) => {
-  if (isAuthenticated()) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return children;
-};
-
-const ProfilePage = () => {
-  return (
-    <section>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-        Profile
-      </h1>
-      <p className="mt-3 text-gray-600 dark:text-gray-400">
-        Manage your account profile details and personal preferences here.
-      </p>
-    </section>
-  );
-};
-
-const SettingsPage = () => {
-  return (
-    <section>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-        Settings
-      </h1>
-      <p className="mt-3 text-gray-600 dark:text-gray-400">
-        Update your application settings and notification preferences.
-      </p>
-    </section>
-  );
-};
-
 const AppRoutes = () => {
   return (
     <Routes>
+      <Route path="/" element={<HomePage />} />
       <Route
         path="/dashboard"
         element={
@@ -104,23 +75,9 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/signup"
-        element={
-          <PublicRoute>
-            <SignUpPage />
-          </PublicRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 };

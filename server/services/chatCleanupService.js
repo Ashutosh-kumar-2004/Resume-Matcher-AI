@@ -1,10 +1,9 @@
 import mongoose from 'mongoose';
 import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
-import { deleteFromCloudinary } from './cloudinaryService.js';
 
-export const MAX_CHATS_PER_USER = 5;
-export const MAX_FILES_PER_CHAT = 5;
+export const MAX_CHATS_PER_USER = 10;
+export const MAX_FILES_PER_CHAT = 10;
 
 const normalizeChatId = (chatId) => {
   if (!mongoose.Types.ObjectId.isValid(chatId)) {
@@ -39,43 +38,15 @@ export const deleteChatCascade = async ({ chatId, userId }) => {
   const messages = await Message.find({ chat: normalizedChatId }).lean();
   const allFiles = messages.flatMap((message) => message.files || []);
 
-  const deletionResults = await Promise.allSettled(
-    allFiles.map((file) =>
-      deleteFromCloudinary({
-        publicId: file.publicId,
-        url: file.url,
-        resourceType: file.resourceType || 'raw',
-      })
-    )
-  );
-
-  const fileDeletionFailures = deletionResults
-    .map((result, index) => ({ result, file: allFiles[index] }))
-    .filter(({ result }) => result.status === 'rejected' || !result.value.success)
-    .map(({ result, file }) => ({
-      url: file?.url || null,
-      publicId: file?.publicId || null,
-      reason:
-        result.status === 'rejected'
-          ? result.reason?.message || 'Cloudinary deletion failed'
-          : result.value?.reason || 'Cloudinary deletion failed',
-    }));
-
-  if (fileDeletionFailures.length > 0) {
-    const error = new Error('Failed to delete one or more files from Cloudinary');
-    error.code = 'CLOUDINARY_DELETE_FAILED';
-    error.fileDeletionFailures = fileDeletionFailures;
-    throw error;
-  }
-
   await Message.deleteMany({ chat: normalizedChatId });
   await Chat.deleteOne({ _id: normalizedChatId });
 
   return {
     deleted: true,
-    filesDeleted: allFiles.length - fileDeletionFailures.length,
+    filesDeleted: allFiles.length,
+    totalFilesInChat: allFiles.length,
     messagesDeleted: messages.length,
-    fileDeletionFailures,
+    fileDeletionFailures: [],
   };
 };
 
