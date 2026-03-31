@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useModal } from "../popUps/useModal";
 import apiClient from "../../services/apiClient";
 
-const AUTH_STORAGE_KEY = "auth_user";
+const AUTH_STORAGE_KEY = "auth_user_resume_matcher_ai";
 
 export const useLogin = () => {
 	const [loading, setLoading] = useState(false);

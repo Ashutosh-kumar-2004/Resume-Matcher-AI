@@ -33,6 +33,10 @@ const AppRoutes = () => {
 
     const verifySession = async () => {
       try {
+        // First check if user exists in sessionStorage
+        const cachedUser = sessionStorage.getItem(AUTH_STORAGE_KEY);
+        
+        // Verify session with backend
         const response = await apiClient.get("/auth/me");
         const user = response?.data?.user || null;
 
@@ -48,10 +52,18 @@ const AppRoutes = () => {
           sessionStorage.removeItem(AUTH_STORAGE_KEY);
           setIsAuthenticated(false);
         }
-      } catch {
+      } catch (error) {
         if (isMounted) {
-          sessionStorage.removeItem(AUTH_STORAGE_KEY);
-          setIsAuthenticated(false);
+          // Check if user was recently logged in (exists in sessionStorage)
+          const cachedUser = sessionStorage.getItem(AUTH_STORAGE_KEY);
+          if (cachedUser) {
+            // User exists in storage but verification failed - could be a temporary issue
+            // For now, keep them logged in but they might need to refresh
+            setIsAuthenticated(true);
+          } else {
+            sessionStorage.removeItem(AUTH_STORAGE_KEY);
+            setIsAuthenticated(false);
+          }
         }
       } finally {
         if (isMounted) {
