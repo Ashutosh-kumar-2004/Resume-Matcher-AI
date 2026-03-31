@@ -18,6 +18,8 @@ import {
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import apiClient from "../../services/apiClient";
 
+const AUTH_STORAGE_KEY = "auth_user_resume_matcher_ai";
+
 const Sidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
@@ -41,7 +43,7 @@ const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const authUser = (() => {
-    const raw = sessionStorage.getItem("auth_user");
+    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
 
     if (!raw) {
       return null;
@@ -220,7 +222,7 @@ const Sidebar = () => {
     } catch {
       // Keep logout action working even if API request fails.
     } finally {
-      sessionStorage.removeItem("auth_user");
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
       window.dispatchEvent(new Event("auth-changed"));
       navigate("/login");
     }

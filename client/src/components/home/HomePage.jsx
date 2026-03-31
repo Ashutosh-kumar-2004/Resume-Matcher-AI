@@ -3,7 +3,9 @@ import { HiArrowRight, HiSparkles } from "react-icons/hi";
 import Navbar from "../navbar/Navbar";
 
 const HomePage = () => {
-  const isAuthenticated = Boolean(sessionStorage.getItem("auth_user"));
+  const isAuthenticated = Boolean(
+    sessionStorage.getItem("auth_user_resume_matcher_ai"),
+  );
 
   return (
     <div className="min-h-screen bg-linear-to-br from-[#5d2ecf] via-[#4624a2] to-[#32217f] text-white">

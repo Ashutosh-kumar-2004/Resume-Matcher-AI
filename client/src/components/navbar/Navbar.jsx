@@ -9,7 +9,7 @@ import {
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import apiClient from "../../services/apiClient";
 
-const AUTH_STORAGE_KEY = "auth_user";
+const AUTH_STORAGE_KEY = "auth_user_resume_matcher_ai";
 const THEME_STORAGE_KEY = "ui_theme";
 
 const Navbar = () => {

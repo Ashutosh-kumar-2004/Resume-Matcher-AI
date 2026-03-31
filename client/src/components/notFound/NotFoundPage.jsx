@@ -2,7 +2,9 @@ import { Link } from "react-router-dom";
 import Navbar from "../navbar/Navbar";
 
 const NotFoundPage = () => {
-  const isAuthenticated = Boolean(sessionStorage.getItem("auth_user"));
+  const isAuthenticated = Boolean(
+    sessionStorage.getItem("auth_user_resume_matcher_ai"),
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-[#0b1020] dark:text-white">

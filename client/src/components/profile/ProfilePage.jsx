@@ -3,7 +3,7 @@ import apiClient from "../../services/apiClient";
 import PopUpModal from "../popUpModal/PopUpModal";
 import { useModal } from "../../hooks/popUps/useModal";
 
-const AUTH_STORAGE_KEY = "auth_user";
+const AUTH_STORAGE_KEY = "auth_user_resume_matcher_ai";
 
 const ProfilePage = () => {
   const [loadingProfile, setLoadingProfile] = useState(true);
