@@ -16,7 +16,7 @@ const getCookieOptions = () => ({
   ),
   httpOnly: true,
   secure: isProduction,
-  sameSite: 'lax',
+  sameSite: isProduction ? 'none' : 'lax',
   path: '/',
 });
 
@@ -149,7 +149,7 @@ export const logout = async (req, res) => {
   res.clearCookie('jwt', {
     httpOnly: true,
     secure: isProduction,
-    sameSite: 'lax',
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/',
   });
 
