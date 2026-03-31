@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { IoAdd, IoClose, IoDocumentTextOutline, IoSend } from "react-icons/io5";
 import { GrRobot } from "react-icons/gr";
 import { MdWarningAmber } from "react-icons/md";
@@ -508,7 +508,7 @@ const Dashboard = () => {
   }, 0);
   const isFileLimitReached = isChatView && totalFilesInChat >= MAX_FILES_PER_CHAT;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!messages.length || !isChatView) {
       return;
     }
@@ -549,7 +549,7 @@ const Dashboard = () => {
 
     const intervalId = window.setInterval(() => {
       setTypingCharCount((prev) => {
-        const next = prev + 2;
+        const next = prev + 1;
 
         if (next >= fullText.length) {
           window.clearInterval(intervalId);
@@ -562,7 +562,7 @@ const Dashboard = () => {
 
         return next;
       });
-    }, 14);
+    }, 36);
 
     return () => {
       window.clearInterval(intervalId);

@@ -224,11 +224,54 @@ const hasConcreteSignal = (line, techHints) => {
   return false;
 };
 
+const normalizeAnalysisForMode = ({ analysis, mode }) => {
+  if (!analysis || typeof analysis !== 'object' || mode !== 'chat_only') {
+    return analysis;
+  }
+
+  const rawSummary =
+    analysis.summary || analysis.formalResponse || analysis.response || analysis.message || '';
+  const summary = cleanAndLimitText(rawSummary, MAX_CHAT_MESSAGE_CHARS);
+
+  return {
+    ...analysis,
+    mode: analysis.mode || 'formal_conversation',
+    summary,
+    strengths: Array.isArray(analysis.strengths) ? analysis.strengths : [],
+    weaknesses: Array.isArray(analysis.weaknesses) ? analysis.weaknesses : [],
+    actionableImprovements: Array.isArray(analysis.actionableImprovements)
+      ? analysis.actionableImprovements
+      : [],
+    nextSteps: Array.isArray(analysis.nextSteps) ? analysis.nextSteps : [],
+    jobMatch:
+      analysis.jobMatch && typeof analysis.jobMatch === 'object'
+        ? analysis.jobMatch
+        : {
+            matchScore: null,
+            matchingSkills: [],
+            missingKeywords: [],
+            targetedSuggestions: [],
+          },
+  };
+};
+
 const collectQualityIssues = ({ analysis, mode, resumeText, jobDescription }) => {
   const issues = [];
 
   if (!analysis || typeof analysis !== 'object') {
     return ['Response is not a valid JSON object'];
+  }
+
+  if (mode === 'chat_only') {
+    const summary = String(
+      analysis.summary || analysis.formalResponse || analysis.response || analysis.message || ''
+    ).trim();
+
+    if (!summary) {
+      issues.push('summary is required for chat_only mode');
+    }
+
+    return issues;
   }
 
   const techHints = extractTechHints(resumeText);
@@ -386,6 +429,47 @@ const ensureChatIdForStorage = async ({ userId, chatId, message, mode }) => {
   };
 };
 
+const buildChatOnlyFormalResponse = (message) => {
+  const text = String(message || '').toLowerCase();
+  const greetingPattern = /\b(hi|hello|hey|good\s+morning|good\s+afternoon|good\s+evening|greetings)\b/i;
+
+  if (greetingPattern.test(text)) {
+    return {
+      mode: 'formal_conversation',
+      summary:
+        'Good day. Thank you for your message. I am specifically designed for resume and job-description analysis. Please share your resume or a job description, and I will assist you professionally.',
+      followUpQuestion: 'Would you like to start with a resume review or a role-specific match check?',
+      strengths: [],
+      weaknesses: [],
+      actionableImprovements: [],
+      nextSteps: [],
+      jobMatch: {
+        matchScore: null,
+        matchingSkills: [],
+        missingKeywords: [],
+        targetedSuggestions: [],
+      },
+    };
+  }
+
+  return {
+    mode: 'formal_conversation',
+    summary:
+      'Thank you for your message. I am specifically focused on resume and job-description analysis. Please provide your resume or target role details, and I will assist you in a formal, professional manner.',
+    followUpQuestion: 'Would you like me to analyze your resume now?',
+    strengths: [],
+    weaknesses: [],
+    actionableImprovements: [],
+    nextSteps: [],
+    jobMatch: {
+      matchScore: null,
+      matchingSkills: [],
+      missingKeywords: [],
+      targetedSuggestions: [],
+    },
+  };
+};
+
 // @desc    Analyze resume/chat using Groq with token-optimized preprocessing
 // @route   POST /api/resume/analyze
 // @access  Private
@@ -401,6 +485,57 @@ export const analyzeResume = async (req, res) => {
         success: false,
         message:
           'Invalid input combination. Use one of: message only, resume only, or resume with job description.',
+      });
+    }
+
+    if (mode === 'chat_only') {
+      const finalAnalysis = buildChatOnlyFormalResponse(message);
+      const storeInChat = parseBoolean(req.body.storeInChat);
+      const requestedChatId = req.body.chatId;
+      let storageMeta = null;
+      let finalChatId = requestedChatId;
+
+      if (storeInChat) {
+        const ensured = await ensureChatIdForStorage({
+          userId: req.user.id,
+          chatId: requestedChatId,
+          message,
+          mode,
+        });
+
+        finalChatId = ensured.chatId;
+        storageMeta = ensured.createdChat;
+
+        await saveToChatHistory({
+          userId: req.user.id,
+          chatId: finalChatId,
+          userMessage: message,
+          assistantPayload: finalAnalysis,
+          mode,
+          uploadedFiles: [],
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          mode,
+          analysis: finalAnalysis,
+          inputStats: {
+            resumeChars: resumeText.length,
+            jobDescriptionChars: jobDescription.length,
+            messageChars: message.length,
+            usedUploadedPdf: false,
+          },
+          modelUsed: 'deterministic-formal-chat-only',
+          chat: storeInChat
+            ? {
+                chatId: finalChatId,
+                created: Boolean(storageMeta?.chat),
+                createdChat: storageMeta,
+              }
+            : null,
+        },
       });
     }
 
@@ -421,9 +556,12 @@ export const analyzeResume = async (req, res) => {
       });
     }
 
-    let finalAnalysis = parsed;
-    const initialIssues = collectQualityIssues({
+    let finalAnalysis = normalizeAnalysisForMode({
       analysis: parsed,
+      mode,
+    });
+    const initialIssues = collectQualityIssues({
+      analysis: finalAnalysis,
       mode,
       resumeText,
       jobDescription,
@@ -448,15 +586,19 @@ export const analyzeResume = async (req, res) => {
       const repairedParsed = extractJsonObject(repaired.responseText);
 
       if (repairedParsed) {
-        const repairedIssues = collectQualityIssues({
+        const normalizedRepaired = normalizeAnalysisForMode({
           analysis: repairedParsed,
+          mode,
+        });
+        const repairedIssues = collectQualityIssues({
+          analysis: normalizedRepaired,
           mode,
           resumeText,
           jobDescription,
         });
 
         if (repairedIssues.length < initialIssues.length) {
-          finalAnalysis = repairedParsed;
+          finalAnalysis = normalizedRepaired;
         }
       }
     }
