@@ -47,7 +47,6 @@ const AppRoutes = () => {
         if (user) {
           sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
           setIsAuthenticated(true);
-          window.dispatchEvent(new Event("auth-changed"));
         } else {
           sessionStorage.removeItem(AUTH_STORAGE_KEY);
           setIsAuthenticated(false);
@@ -74,8 +73,16 @@ const AppRoutes = () => {
 
     verifySession();
 
+    // Listen for auth state changes (login/logout) from other components
+    const handleAuthChange = () => {
+      verifySession();
+    };
+
+    window.addEventListener("auth-changed", handleAuthChange);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("auth-changed", handleAuthChange);
     };
   }, []);
 
