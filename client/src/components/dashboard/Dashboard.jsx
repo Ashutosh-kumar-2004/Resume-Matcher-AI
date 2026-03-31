@@ -507,6 +507,26 @@ const Dashboard = () => {
     return count + fileCount;
   }, 0);
   const isFileLimitReached = isChatView && totalFilesInChat >= MAX_FILES_PER_CHAT;
+  const latestMessage = messages[messages.length - 1];
+  const latestAssistantMessageId =
+    latestMessage?.role === "assistant" ? latestMessage._id || "" : "";
+
+  const shouldRenderTypingForMessage = (message) => {
+    if (!message || message.role !== "assistant" || !message._id) {
+      return false;
+    }
+
+    if (typingMessageId === message._id) {
+      return true;
+    }
+
+    // Render typing preview immediately for a fresh assistant tail message
+    // before state updates finish, preventing a one-frame full-text flash.
+    return (
+      message._id === latestAssistantMessageId &&
+      !animatedAssistantIdsRef.current.has(message._id)
+    );
+  };
 
   useLayoutEffect(() => {
     if (!messages.length || !isChatView) {
@@ -765,7 +785,7 @@ const Dashboard = () => {
                         {renderUploadedFiles(message.files, message._id)}
                       </>
                     ) : (
-                      typingMessageId === message._id
+                      shouldRenderTypingForMessage(message)
                         ? renderTypingPreview(message.content)
                         : renderAssistantContent(message.content)
                     )}
