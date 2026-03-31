@@ -19,9 +19,12 @@ const Dashboard = () => {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [deletingFileKey, setDeletingFileKey] = useState("");
+  const [typingMessageId, setTypingMessageId] = useState("");
+  const [typingCharCount, setTypingCharCount] = useState(0);
   const fileInputRef = useRef(null);
   const promptTextareaRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const animatedAssistantIdsRef = useRef(new Set());
   const navigate = useNavigate();
 
   const autoResizePromptTextarea = (textarea) => {
@@ -301,6 +304,56 @@ const Dashboard = () => {
     }
   };
 
+  const extractAssistantTypingText = (content) => {
+    try {
+      const parsed = JSON.parse(content);
+
+      if (!parsed || typeof parsed !== "object") {
+        return String(content || "");
+      }
+
+      const parts = [];
+
+      if (parsed.summary) {
+        parts.push(String(parsed.summary));
+      }
+
+      const strengths = Array.isArray(parsed.strengths) ? parsed.strengths : [];
+      const weaknesses = Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [];
+      const improvements = Array.isArray(parsed.actionableImprovements)
+        ? parsed.actionableImprovements
+        : [];
+
+      if (strengths.length) {
+        parts.push(`Strengths: ${strengths.join("; ")}`);
+      }
+
+      if (weaknesses.length) {
+        parts.push(`Weaknesses: ${weaknesses.join("; ")}`);
+      }
+
+      if (improvements.length) {
+        parts.push(`Improvements: ${improvements.join("; ")}`);
+      }
+
+      return parts.join("\n\n") || String(content || "");
+    } catch {
+      return String(content || "");
+    }
+  };
+
+  const renderTypingPreview = (content) => {
+    const fullText = extractAssistantTypingText(content);
+    const partialText = fullText.slice(0, typingCharCount);
+
+    return (
+      <p className="whitespace-pre-wrap wrap-break-word">
+        {partialText}
+        <span className="typing-cursor">|</span>
+      </p>
+    );
+  };
+
   const handleDeleteUploadedFile = async ({ messageId, fileIndex, key }) => {
     if (!chatId || !messageId) {
       return;
@@ -454,6 +507,67 @@ const Dashboard = () => {
     return count + fileCount;
   }, 0);
   const isFileLimitReached = isChatView && totalFilesInChat >= MAX_FILES_PER_CHAT;
+
+  useEffect(() => {
+    if (!messages.length || !isChatView) {
+      return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+
+    if (!lastMessage?._id || lastMessage.role !== "assistant") {
+      return;
+    }
+
+    if (animatedAssistantIdsRef.current.has(lastMessage._id)) {
+      return;
+    }
+
+    animatedAssistantIdsRef.current.add(lastMessage._id);
+    setTypingMessageId(lastMessage._id);
+    setTypingCharCount(0);
+  }, [messages, isChatView]);
+
+  useEffect(() => {
+    if (!typingMessageId) {
+      return;
+    }
+
+    const targetMessage = messages.find((message) => message._id === typingMessageId);
+    if (!targetMessage) {
+      setTypingMessageId("");
+      setTypingCharCount(0);
+      return;
+    }
+
+    const fullText = extractAssistantTypingText(targetMessage.content);
+    if (!fullText) {
+      setTypingMessageId("");
+      setTypingCharCount(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTypingCharCount((prev) => {
+        const next = prev + 2;
+
+        if (next >= fullText.length) {
+          window.clearInterval(intervalId);
+          window.setTimeout(() => {
+            setTypingMessageId("");
+            setTypingCharCount(0);
+          }, 120);
+          return fullText.length;
+        }
+
+        return next;
+      });
+    }, 14);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [typingMessageId, messages]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -651,7 +765,9 @@ const Dashboard = () => {
                         {renderUploadedFiles(message.files, message._id)}
                       </>
                     ) : (
-                      renderAssistantContent(message.content)
+                      typingMessageId === message._id
+                        ? renderTypingPreview(message.content)
+                        : renderAssistantContent(message.content)
                     )}
                   </div>
                 </div>
@@ -765,6 +881,24 @@ const Dashboard = () => {
 
         .thinking-dots {
           animation: thinkingDots 1.2s ease-in-out infinite;
+        }
+
+        @keyframes cursorBlink {
+          0%,
+          49% {
+            opacity: 1;
+          }
+          50%,
+          100% {
+            opacity: 0;
+          }
+        }
+
+        .typing-cursor {
+          display: inline-block;
+          margin-left: 2px;
+          font-weight: 700;
+          animation: cursorBlink 1s steps(1, end) infinite;
         }
 
         .chat-scroll {
