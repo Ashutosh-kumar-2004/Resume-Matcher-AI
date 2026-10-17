@@ -72,6 +72,9 @@ const getGroqClient = () => {
 const getCandidateModels = (preferredModel) => {
   const candidates = [
     preferredModel,
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b',
+    'openai/gpt-oss-120b',
     'llama-3.1-8b-instant',
     'llama-3.3-70b-versatile',
     'mixtral-8x7b-32768',
@@ -153,17 +156,23 @@ const getMode = ({ message, resumeText, jobDescription }) => {
   return null;
 };
 
-const buildPrompt = ({ mode, message, resumeText, jobDescription }) => {
+const buildPrompt = ({ mode, message, resumeText, jobDescription, conversationHistory }) => {
   const systemInstruction = SYSTEM_PROMPT_FOR_GROQ_AI.trim();
 
   const modeContext = `Mode: ${mode}`;
+  const historyContext =
+    conversationHistory && conversationHistory.length
+      ? `Recent Conversation Context:\n${conversationHistory
+          .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+          .join('\n')}`
+      : 'Recent Conversation Context: None';
   const messageContext = message ? `User Message:\n${message}` : 'User Message: None';
   const resumeContext = resumeText ? `Resume Text:\n${resumeText}` : 'Resume Text: None';
   const jobDescriptionContext = jobDescription
     ? `Job Description:\n${jobDescription}`
     : 'Job Description: None';
 
-  return [systemInstruction, modeContext, messageContext, resumeContext, jobDescriptionContext].join(
+  return [systemInstruction, modeContext, historyContext, messageContext, resumeContext, jobDescriptionContext].join(
     '\n\n'
   );
 };
@@ -225,33 +234,25 @@ const hasConcreteSignal = (line, techHints) => {
 };
 
 const normalizeAnalysisForMode = ({ analysis, mode }) => {
-  if (!analysis || typeof analysis !== 'object' || mode !== 'chat_only') {
+  if (!analysis || typeof analysis !== 'object') {
     return analysis;
   }
 
-  const rawSummary =
-    analysis.summary || analysis.formalResponse || analysis.response || analysis.message || '';
-  const summary = cleanAndLimitText(rawSummary, MAX_CHAT_MESSAGE_CHARS);
+  if (mode === 'chat_only') {
+    const rawSummary =
+      analysis.summary || analysis.formalResponse || analysis.response || analysis.message || '';
+    const summary = cleanAndLimitText(rawSummary, MAX_CHAT_MESSAGE_CHARS);
+
+    return {
+      mode: 'chat_only',
+      summary,
+      followUpQuestion: analysis.followUpQuestion || null,
+    };
+  }
 
   return {
     ...analysis,
-    mode: analysis.mode || 'formal_conversation',
-    summary,
-    strengths: Array.isArray(analysis.strengths) ? analysis.strengths : [],
-    weaknesses: Array.isArray(analysis.weaknesses) ? analysis.weaknesses : [],
-    actionableImprovements: Array.isArray(analysis.actionableImprovements)
-      ? analysis.actionableImprovements
-      : [],
-    nextSteps: Array.isArray(analysis.nextSteps) ? analysis.nextSteps : [],
-    jobMatch:
-      analysis.jobMatch && typeof analysis.jobMatch === 'object'
-        ? analysis.jobMatch
-        : {
-            matchScore: null,
-            matchingSkills: [],
-            missingKeywords: [],
-            targetedSuggestions: [],
-          },
+    mode: 'resume_analysis',
   };
 };
 
@@ -335,8 +336,8 @@ const collectQualityIssues = ({ analysis, mode, resumeText, jobDescription }) =>
   return issues;
 };
 
-const buildRepairPrompt = ({ mode, message, resumeText, jobDescription, previousAnalysis, issues }) => {
-  const basePrompt = buildPrompt({ mode, message, resumeText, jobDescription });
+const buildRepairPrompt = ({ mode, message, resumeText, jobDescription, conversationHistory, previousAnalysis, issues }) => {
+  const basePrompt = buildPrompt({ mode, message, resumeText, jobDescription, conversationHistory });
   const issueLines = issues.map((entry, index) => `${index + 1}. ${entry}`).join('\n');
 
   return `${basePrompt}\n\nYour previous JSON failed quality checks:\n${issueLines}\n\nPrevious JSON:\n${JSON.stringify(
@@ -429,47 +430,6 @@ const ensureChatIdForStorage = async ({ userId, chatId, message, mode }) => {
   };
 };
 
-const buildChatOnlyFormalResponse = (message) => {
-  const text = String(message || '').toLowerCase();
-  const greetingPattern = /\b(hi|hello|hey|good\s+morning|good\s+afternoon|good\s+evening|greetings)\b/i;
-
-  if (greetingPattern.test(text)) {
-    return {
-      mode: 'formal_conversation',
-      summary:
-        'Good day. Thank you for your message. I am specifically designed for resume and job-description analysis. Please share your resume or a job description, and I will assist you professionally.',
-      followUpQuestion: 'Would you like to start with a resume review or a role-specific match check?',
-      strengths: [],
-      weaknesses: [],
-      actionableImprovements: [],
-      nextSteps: [],
-      jobMatch: {
-        matchScore: null,
-        matchingSkills: [],
-        missingKeywords: [],
-        targetedSuggestions: [],
-      },
-    };
-  }
-
-  return {
-    mode: 'formal_conversation',
-    summary:
-      'Thank you for your message. I am specifically focused on resume and job-description analysis. Please provide your resume or target role details, and I will assist you in a formal, professional manner.',
-    followUpQuestion: 'Would you like me to analyze your resume now?',
-    strengths: [],
-    weaknesses: [],
-    actionableImprovements: [],
-    nextSteps: [],
-    jobMatch: {
-      matchScore: null,
-      matchingSkills: [],
-      missingKeywords: [],
-      targetedSuggestions: [],
-    },
-  };
-};
-
 // @desc    Analyze resume/chat using Groq with token-optimized preprocessing
 // @route   POST /api/resume/analyze
 // @access  Private
@@ -477,7 +437,49 @@ export const analyzeResume = async (req, res) => {
   try {
     const message = cleanAndLimitText(req.body.message, MAX_CHAT_MESSAGE_CHARS);
     const jobDescription = cleanAndLimitText(req.body.jobDescription, MAX_JOB_DESCRIPTION_CHARS);
-    const resumeText = await extractResumeText(req);
+    let resumeText = await extractResumeText(req);
+    const requestedChatId = req.body.chatId;
+
+    // CONTEXT-AWARE RESUME LOOKUP:
+    // If no resume in current upload, look for previous resume uploaded in this chat
+    if (!resumeText && requestedChatId && mongoose.Types.ObjectId.isValid(requestedChatId)) {
+      const prevResumeMessage = await Message.findOne({
+        chat: requestedChatId,
+        user: req.user.id,
+        'files.extractedText': { $exists: true, $ne: '' },
+      }).sort({ createdAt: -1 });
+
+      if (prevResumeMessage?.files?.length) {
+        const fileWithText = prevResumeMessage.files.find(
+          (f) => f.extractedText && f.extractedText.trim().length > 0
+        );
+        if (fileWithText) {
+          resumeText = fileWithText.extractedText;
+        }
+      }
+    }
+
+    // CONTEXT-AWARE CONVERSATION HISTORY (last 6 messages):
+    let conversationHistory = [];
+    if (requestedChatId && mongoose.Types.ObjectId.isValid(requestedChatId)) {
+      const recentMessages = await Message.find({ chat: requestedChatId })
+        .sort({ createdAt: -1 })
+        .limit(6);
+      conversationHistory = recentMessages.reverse().map((m) => {
+        let contentText = m.content;
+        try {
+          const parsed = JSON.parse(m.content);
+          if (parsed && typeof parsed === 'object') {
+            contentText = parsed.summary || parsed.response || parsed.formalResponse || m.content;
+          }
+        } catch (_) {}
+        return {
+          role: m.role,
+          content: cleanAndLimitText(contentText, 800),
+        };
+      });
+    }
+
     const mode = getMode({ message, resumeText, jobDescription });
 
     if (!mode) {
@@ -488,58 +490,7 @@ export const analyzeResume = async (req, res) => {
       });
     }
 
-    if (mode === 'chat_only') {
-      const finalAnalysis = buildChatOnlyFormalResponse(message);
-      const storeInChat = parseBoolean(req.body.storeInChat);
-      const requestedChatId = req.body.chatId;
-      let storageMeta = null;
-      let finalChatId = requestedChatId;
-
-      if (storeInChat) {
-        const ensured = await ensureChatIdForStorage({
-          userId: req.user.id,
-          chatId: requestedChatId,
-          message,
-          mode,
-        });
-
-        finalChatId = ensured.chatId;
-        storageMeta = ensured.createdChat;
-
-        await saveToChatHistory({
-          userId: req.user.id,
-          chatId: finalChatId,
-          userMessage: message,
-          assistantPayload: finalAnalysis,
-          mode,
-          uploadedFiles: [],
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          mode,
-          analysis: finalAnalysis,
-          inputStats: {
-            resumeChars: resumeText.length,
-            jobDescriptionChars: jobDescription.length,
-            messageChars: message.length,
-            usedUploadedPdf: false,
-          },
-          modelUsed: 'deterministic-formal-chat-only',
-          chat: storeInChat
-            ? {
-                chatId: finalChatId,
-                created: Boolean(storageMeta?.chat),
-                createdChat: storageMeta,
-              }
-            : null,
-        },
-      });
-    }
-
-    const prompt = buildPrompt({ mode, message, resumeText, jobDescription });
+    const prompt = buildPrompt({ mode, message, resumeText, jobDescription, conversationHistory });
     const { client, preferredModel } = getGroqClient();
     const { responseText, modelName } = await generateWithFallbackModels({
       client,
@@ -567,12 +518,20 @@ export const analyzeResume = async (req, res) => {
       jobDescription,
     });
 
-    if (initialIssues.length) {
+    const hasCriticalIssues =
+      mode !== 'chat_only' &&
+      (typeof finalAnalysis.overallScore !== 'number' ||
+        !finalAnalysis.summary ||
+        !Array.isArray(finalAnalysis.strengths) ||
+        finalAnalysis.strengths.length === 0);
+
+    if (hasCriticalIssues && initialIssues.length) {
       const repairPrompt = buildRepairPrompt({
         mode,
         message,
         resumeText,
         jobDescription,
+        conversationHistory,
         previousAnalysis: parsed,
         issues: initialIssues,
       });
@@ -604,7 +563,6 @@ export const analyzeResume = async (req, res) => {
     }
 
     const storeInChat = parseBoolean(req.body.storeInChat);
-    const requestedChatId = req.body.chatId;
     let storageMeta = null;
     let finalChatId = requestedChatId;
 
@@ -621,7 +579,7 @@ export const analyzeResume = async (req, res) => {
 
       const uploadedFiles = buildUploadedResumeFiles({
         file: req.file,
-        resumeText,
+        resumeText: req.file ? resumeText : null,
       });
 
       await saveToChatHistory({
@@ -640,7 +598,7 @@ export const analyzeResume = async (req, res) => {
         mode,
         analysis: finalAnalysis,
         inputStats: {
-          resumeChars: resumeText.length,
+          resumeChars: resumeText ? resumeText.length : 0,
           jobDescriptionChars: jobDescription.length,
           messageChars: message.length,
           usedUploadedPdf: Boolean(req.file?.buffer),

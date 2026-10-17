@@ -145,8 +145,15 @@ const Sidebar = () => {
 
     loadChats();
 
+    const handleChatsChange = () => {
+      loadChats();
+    };
+
+    window.addEventListener("chats-changed", handleChatsChange);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("chats-changed", handleChatsChange);
     };
   }, [location.pathname]);
 
